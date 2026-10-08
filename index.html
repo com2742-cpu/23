@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>민주주의 축구 토론 리그 (Democracy Soccer Debate Studio)</title>
+    <!-- Firebase SDK (v8) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        :root {
+            --pitch-green: #1e7e34;
+            --pitch-line: #ffffff;
+            --card-yellow: #ffc107;
+            --card-red: #dc3545;
+            --card-green: #28a745;
+            --dark-bg: #111827;
+            --panel-bg: #1f2937;
+            --accent-gold: #f59e0b;
+            --text-light: #f3f4f6;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; }
+        body { background-color: var(--dark-bg); color: var(--text-light); min-height: 100vh; display: flex; flex-direction: column; }
+
+        /* Top Header Control Bar */
+        header {
+            background-color: #0f172a;
+            border-bottom: 2px solid #374151;
+            padding: 12px 20px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .header-title { display: flex; align-items: center; gap: 10px; font-size: 1.2rem; font-weight: bold; color: var(--accent-gold); }
+        .header-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+        select, input[type="text"] {
+            background-color: #374151;
+            color: #fff;
+            border: 1px solid #4b5563;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .btn {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover { background-color: #1d4ed8; transform: translateY(-1px); }
+        .btn-success { background-color: #059669; }
+        .btn-success:hover { background-color: #047857; }
+        .btn-warning { background-color: #d97706; }
+        .btn-danger { background-color: #dc2626; }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            background-color: #374151;
+            color: #9ca3af;
+        }
+        .status-badge.connected { background-color: #065f46; color: #34d399; }
+
+        /* Main Container Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 16px;
+            padding: 16px;
+            flex: 1;
+        }
+
+        @media (max-width: 1024px) {
+            .main-container { grid-template-columns: 1fr; }
+        }
+
+        /* Soccer Pitch Visualizer */
+        .pitch-card {
+            background-color: var(--panel-bg);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            border: 1px solid #374151;
+        }
+
+        .pitch {
+            position: relative;
+            background: linear-gradient(to bottom, #15803d, #166534);
+            border: 4px solid var(--pitch-line);
+            border-radius: 12px;
+            height: 420px;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.4);
+        }
+
+        /* Pitch Lines */
+        .pitch-center-line { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background-color: rgba(255,255,255,0.7); }
+        .pitch-center-circle { position: absolute; top: 50%; left: 50%; width: 100px; height: 100px; border: 2px solid rgba(255,255,255,0.7); border-radius: 50%; transform: translate(-50%, -50%); }
+
+        /* Soccer Player Node */
+        .player-node {
+            position: absolute;
+            width: 80px;
+            text-align: center;
+            transform: translate(-50%, -50%);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+            z-index: 5;
+        }
+
+        .player-avatar {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 4px auto;
+            background-color: #1f2937;
+            border: 3px solid var(--accent-gold);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .player-node.has-ball .player-avatar {
+            border-color: #60a5fa;
+            box-shadow: 0 0 20px #3b82f6;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .player-label {
+            background-color: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Soccer Ball Animated */
+        .soccer-ball {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            font-size: 1.4rem;
+            transform: translate(-50%, -50%);
+            transition: all 0.8s ease-in-out;
+            z-index: 10;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.6));
+        }
+
+        /* Parent Spectator Bar */
+        .parent-ticker {
+            background-color: #111827;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            overflow: hidden;
+        }
+        .parent-ticker-title { font-weight: bold; color: #f43f5e; white-space: nowrap; font-size: 0.9rem; }
+        .parent-ticker-content { flex: 1; font-size: 0.9rem; color: #e5e7eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Right Panel Cards */
+        .side-panel { display: flex; flex-direction: column; gap: 16px; }
+
+        .panel-card {
+            background-color: var(--panel-bg);
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid #374151;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .panel-title { font-size: 1.05rem; font-weight: bold; color: var(--accent-gold); display: flex; justify-content: space-between; align-items: center; }
+
+        /* Match Log Feed */
+        .match-log-box {
+            height: 220px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-right: 4px;
+        }
+
+        .log-item {
+            background-color: #111827;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            border-left: 3px solid #3b82f6;
+        }
+
+        .log-item.card-log { border-left-color: #f59e0b; }
+        .log-item.vote-log { border-left-color: #10b981; }
+
+        /* Lego Avatar Selector Grid */
+        .avatar-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .avatar-option {
+            background-color: #111827;
+            border: 2px solid #374151;
+            border-radius: 8px;
+            padding: 6px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .avatar-option:hover, .avatar-option.selected { border-color: var(--accent-gold); background-color: #374151; }
+        .avatar-option .icon { font-size: 1.5rem; }
+        .avatar-option .name { font-size: 0.7rem; color: #d1d5db; margin-top: 2px; }
+
+        /* Proposal List */
+        .proposal-list { display: flex; flex-direction: column; gap: 10px; max-height: 280px; overflow-y: auto; }
+        .proposal-card {
+            background-color: #111827;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .proposal-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 0.9rem; }
+        .proposal-title { color: #60a5fa; }
+        .proposal-desc { font-size: 0.85rem; color: #9ca3af; }
+
+        /* Custom Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.75);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        .modal-card {
+            background-color: var(--panel-bg);
+            border: 1px solid #4b5563;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 480px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Control Bar -->
+    <header>
+        <div class="header-title">
+            <span>⚽ 민주주의 축구 토론 리그</span>
+        </div>
+        <div class="header-controls">
+            <!-- Class Selector -->
+            <select id="class-select" onchange="changeClassSelect(this.value)">
+                <option value="CLASS101">1반 (CLASS101)</option>
+                <option value="CLASS102">2반 (CLASS102)</option>
+                <option value="CLASS103">3반 (CLASS103)</option>
+                <option value="CLASS104">4반 (CLASS104)</option>
+                <option value="CLASS105">5반 (CLASS105)</option>
+                <option value="CLASS106">6반 (CLASS106)</option>
+                <option value="CLASS107">7반 (CLASS107)</option>
+            </select>
+
+            <!-- Role Selector -->
+            <select id="role-select" onchange="changeRole(this.value)">
+                <option value="teacher">🖥️ 교사 (프로젝터 메인 화면)</option>
+                <option value="student">📱 학생 (아이패드 발언/제출 모드)</option>
+                <option value="parent">👪 학부모 (스마트폰 응원 모드)</option>
+            </select>
+
+            <!-- Room Code Manual Input -->
+            <input type="text" id="room-code-input" placeholder="수업 방 코드" style="width: 110px;">
+            
+            <button class="btn btn-success" onclick="connectRoom()">⚡ 실시간 연결하기</button>
+            <span id="conn-status" class="status-badge">🔴 미연결</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Left: Soccer Pitch & Parent Ticker -->
+        <div class="pitch-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="font-size: 1.1rem; color: #f3f4f6;">경기장 경기 중계 (Realtime Pitch)</h2>
+                <div style="font-size: 0.85rem; color: #9ca3af;">
+                    👏 학부모 박수 수: <strong id="clap-counter" style="color: #f43f5e; font-size: 1.1rem;">0</strong>회
+                </div>
+            </div>
+
+            <!-- Pitch Graphics -->
+            <div class="pitch" id="soccer-pitch">
+                <div class="pitch-center-line"></div>
+                <div class="pitch-center-circle"></div>
+                
+                <!-- Animated Ball -->
+                <div class="soccer-ball" id="soccer-ball" style="top: 50%; left: 50%;">⚽</div>
+
+                <!-- Player Nodes rendered dynamically -->
+                <div id="players-container"></div>
+            </div>
+
+            <!-- Parent Realtime Live Ticker -->
+            <div class="parent-ticker">
+                <div class="parent-ticker-title">👪 시민 자문단(학부모) 실시간 소리:</div>
+                <div class="parent-ticker-content" id="parent-ticker-text">학부모님의 따뜻한 한 줄 의견을 기다리고 있습니다...</div>
+            </div>
+
+            <!-- Control Box based on Role -->
+            <div id="role-control-box" style="background-color: #111827; padding: 14px; border-radius: 8px; border: 1px solid #374151;">
+                <!-- Dynamically populated by JS -->
+            </div>
+        </div>
+
+        <!-- Right Side: Proposals & Match Logs -->
+        <div class="side-panel">
+            <!-- Registered Proposals -->
+            <div class="panel-card">
+                <div class="panel-title">
+                    <span>📋 등록된 모둠안 목록</span>
+                    <button class="btn btn-warning" style="font-size: 0.75rem; padding: 4px 8px;" onclick="openProposalModal()" id="btn-add-prop">+ 안 등록</button>
+                </div>
+                <div class="proposal-list" id="proposal-list">
+                    <div style="text-align: center; color: #6b7280; padding: 20px 0;">등록된 모둠 안이 없습니다.<br>아이패드로 안을 작성해 보세요!</div>
+                </div>
+            </div>
+
+            <!-- Match Logs -->
+            <div class="panel-card">
+                <div class="panel-title">
+                    <span>🎙️ 실시간 경기/발언 중계</span>
+                </div>
+                <div class="match-log-box" id="match-log-box">
+                    <div class="log-item">수업 방에 연결되면 실시간 발언 기록이 중계됩니다.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Proposal Submission -->
+    <div class="modal-overlay" id="proposal-modal">
+        <div class="modal-card">
+            <h3 style="color: var(--accent-gold);">📝 모둠 자율 안 제출 (학생용)</h3>
+            
+            <label style="font-size: 0.85rem; color: #9ca3af;">학번 및 이름</label>
+            <input type="text" id="student-num-name" placeholder="예: 10101 홍길동">
+
+            <label style="font-size: 0.85rem; color: #9ca3af;">모둠 이름</label>
+            <input type="text" id="prop-team-name" placeholder="예: 1모둠 또는 빛나는 모둠">
+
+            <label style="font-size: 0.85rem; color: #9ca3af;">모둠 대표 레고 축구 스타선수 선택</label>
+            <div class="avatar-grid" id="avatar-selector-grid"></div>
+
+            <label style="font-size: 0.85rem; color: #9ca3af;">급식 순서 제안 제목</label>
+            <input type="text" id="prop-title" placeholder="예: 주차별 순환제 + 체육반 우선 배려 안">
+
+            <label style="font-size: 0.85rem; color: #9ca3af;">제안 이유 및 세부 내용</label>
+            <textarea id="prop-desc" rows="3" style="background-color: #374151; color: #fff; border: 1px solid #4b5563; border-radius: 6px; padding: 8px;" placeholder="우리 모둠이 생각한 합리적 이유를 작성해 주세요."></textarea>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button class="btn" style="background-color: #4b5563;" onclick="closeProposalModal()">취소</button>
+                <button class="btn btn-success" onclick="submitProposal()">제출하기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            databaseURL: "https://myschooldebate-default-rtdb.asia-southeast1.firebasedatabase.app"
+        };
+
+        // Initialize Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        // --- Lego Football Player Avatars Definition ---
+        const AVATARS = [
+            { id: 'son', name: '손흥민', num: 'No.7 쏜', emoji: '📸⚡', color: '#1e40af' },
+            { id: 'messi', name: '메시', num: 'No.10 GOAT', emoji: '👑🏆', color: '#db2777' },
+            { id: 'ronaldo', name: '호날두', num: 'No.7 SIUUU', emoji: '🔥🕺', color: '#eab308' },
+            { id: 'kim', name: '김민재', num: 'No.3 통곡벽', emoji: '🧱🛡️', color: '#dc2626' },
+            { id: 'lee', name: '이강인', num: 'No.19 마법사', emoji: '🪄⚽', color: '#2563eb' },
+            { id: 'mbappe', name: '음바페', num: 'No.9 스피드', emoji: '🚀💨', color: '#4f46e5' },
+            { id: 'haaland', name: '홀란드', num: 'No.9 괴물', emoji: '🤖💥', color: '#0284c7' },
+            { id: 'bellingham', name: '벨링엄', num: 'No.5 슈퍼스타', emoji: '👐🌟', color: '#d97706' }
+        ];
+
+        // --- Application State ---
+        let currentRoomCode = 'CLASS101';
+        let userRole = 'teacher'; // 'teacher', 'student', 'parent'
+        let selectedAvatarId = 'son';
+
+        let proposals = [];
+        let matchLogs = [];
+        let parentComments = [];
+        let clapCount = 0;
+        let currentTurnProposalId = null;
+        let votingActive = false;
+        let votingState = {};
+
+        // --- Helper Function: Safely parse Firebase Data to JavaScript Array ---
+        // Prevents TypeError: proposals.forEach / proposals.map is not a function upon page refresh!
+        function ensureArray(val) {
+            if (!val) return [];
+            if (Array.isArray(val)) return val.filter(Boolean);
+            if (typeof val === 'object') return Object.values(val).filter(Boolean);
+            return [];
+        }
+
+        // --- Initialization on Page Load ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Restore saved settings from LocalStorage if available
+            const savedRoom = localStorage.getItem('debate_room_code') || 'CLASS101';
+            const savedRole = localStorage.getItem('debate_role') || 'teacher';
+            const savedStudent = localStorage.getItem('debate_student_info') || '';
+
+            document.getElementById('room-code-input').value = savedRoom;
+            document.getElementById('class-select').value = savedRoom;
+            document.getElementById('role-select').value = savedRole;
+            if (document.getElementById('student-num-name')) {
+                document.getElementById('student-num-name').value = savedStudent;
+            }
+
+            userRole = savedRole;
+            currentRoomCode = savedRoom;
+
+            renderAvatarSelector();
+            updateRoleControlUI();
+
+            // Auto connect to room on load
+            connectRoom();
+        });
+
+        // --- Change Handlers ---
+        function changeClassSelect(val) {
+            document.getElementById('room-code-input').value = val;
+            connectRoom();
+        }
+
+        function changeRole(val) {
+            userRole = val;
+            localStorage.setItem('debate_role', val);
+            updateRoleControlUI();
+        }
+
+        // --- Connect to Firebase Room ---
+        function connectRoom() {
+            const inputCode = document.getElementById('room-code-input').value.trim().toUpperCase();
+            if (!inputCode) return;
+
+            // Detach previous listener
+            if (currentRoomCode) {
+                db.ref('rooms/' + currentRoomCode).off();
+            }
+
+            currentRoomCode = inputCode;
+            localStorage.setItem('debate_room_code', currentRoomCode);
+
+            const statusEl = document.getElementById('conn-status');
+            statusEl.innerText = "⏳ 연결 중...";
+            statusEl.className = "status-badge";
+
+            // Attach Realtime Firebase Listener
+            db.ref('rooms/' + currentRoomCode).on('value', (snapshot) => {
+                const data = snapshot.val() || {};
+
+                // Use ensureArray to fix object conversion bug upon reload!
+                proposals = ensureArray(data.proposals);
+                matchLogs = ensureArray(data.matchLogs);
+                parentComments = ensureArray(data.parentComments);
+                clapCount = data.clapCount || 0;
+                currentTurnProposalId = data.currentTurnProposalId || (proposals.length > 0 ? proposals[0].id : null);
+                votingActive = data.votingActive || false;
+                votingState = data.votingState || {};
+
+                statusEl.innerText = `🟢 ${currentRoomCode} 연결 완료`;
+                statusEl.className = "status-badge connected";
+
+                // Re-render UI
+                renderAll();
+            }, (error) => {
+                console.error("Firebase Error:", error);
+                statusEl.innerText = "🔴 연결 실패 (규칙 확인)";
+            });
+        }
+
+        // Save Room Data to Firebase
+        function saveRoomData() {
+            if (!currentRoomCode) return;
+            const payload = {
+                proposals: proposals,
+                matchLogs: matchLogs,
+                parentComments: parentComments,
+                clapCount: clapCount,
+                currentTurnProposalId: currentTurnProposalId,
+                votingActive: votingActive,
+                votingState: votingState,
+                lastUpdated: Date.now()
+            };
+            db.ref('rooms/' + currentRoomCode).set(payload);
+        }
+
+        // --- Render All UI Components ---
+        function renderAll() {
+            renderPitch();
+            renderProposals();
+            renderMatchLogs();
+            renderParentComments();
+            renderClapCount();
+            updateRoleControlUI();
+        }
+
+        // --- Render Soccer Pitch ---
+        function renderPitch() {
+            const container = document.getElementById('players-container');
+            const ball = document.getElementById('soccer-ball');
+            container.innerHTML = '';
+
+            if (proposals.length === 0) {
+                ball.style.top = '50%';
+                ball.style.left = '50%';
+                return;
+            }
+
+            // Fixed Position Layouts for up to 6 teams
+            const positions = [
+                { top: '25%', left: '20%' },
+                { top: '25%', left: '80%' },
+                { top: '75%', left: '20%' },
+                { top: '75%', left: '80%' },
+                { top: '50%', left: '30%' },
+                { top: '50%', left: '70%' }
+            ];
+
+            let ballTargetTop = '50%';
+            let ballTargetLeft = '50%';
+
+            proposals.forEach((prop, idx) => {
+                const pos = positions[idx % positions.length];
+                const isHasBall = (prop.id === currentTurnProposalId);
+
+                if (isHasBall) {
+                    ballTargetTop = pos.top;
+                    ballTargetLeft = pos.left;
+                }
+
+                const avatarObj = AVATARS.find(a => a.id === prop.avatarId) || AVATARS[0];
+
+                const nodeHtml = `
+                    <div class="player-node ${isHasBall ? 'has-ball' : ''}" style="top: ${pos.top}; left: ${pos.left};" onclick="passBallTo('${prop.id}')">
+                        <div class="player-avatar" style="border-color: ${avatarObj.color};">
+                            ${avatarObj.emoji}
+                        </div>
+                        <div class="player-label">${prop.teamName} (${avatarObj.name})</div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', nodeHtml);
+            });
+
+            // Move ball smoothly
+            ball.style.top = ballTargetTop;
+            ball.style.left = ballTargetLeft;
+        }
+
+        // --- Render Proposals List ---
+        function renderProposals() {
+            const listEl = document.getElementById('proposal-list');
+            if (proposals.length === 0) {
+                listEl.innerHTML = `<div style="text-align: center; color: #6b7280; padding: 20px 0;">등록된 모둠 안이 없습니다.<br>아이패드로 안을 작성해 보세요!</div>`;
+                return;
+            }
+
+            listEl.innerHTML = proposals.map(prop => {
+                const avatarObj = AVATARS.find(a => a.id === prop.avatarId) || AVATARS[0];
+                const isCurrent = (prop.id === currentTurnProposalId);
+                const votes = Object.values(votingState).filter(v => v === prop.id).length;
+
+                return `
+                    <div class="proposal-card" style="${isCurrent ? 'border-color: #3b82f6;' : ''}">
+                        <div class="proposal-header">
+                            <span class="proposal-title">${avatarObj.emoji} ${prop.teamName} (${prop.author || '학생'})</span>
+                            ${votingActive ? `<span style="color: #34d399; font-size: 0.8rem;">🗳️ ${votes}표</span>` : ''}
+                        </div>
+                        <div style="font-weight: bold; font-size: 0.9rem; color: #f3f4f6;">${prop.title}</div>
+                        <div class="proposal-desc">${prop.desc}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- Render Match Logs ---
+        function renderMatchLogs() {
+            const box = document.getElementById('match-log-box');
+            if (matchLogs.length === 0) {
+                box.innerHTML = `<div class="log-item">수업 방에 연결되면 실시간 발언 기록이 중계됩니다.</div>`;
+                return;
+            }
+
+            box.innerHTML = matchLogs.slice().reverse().map(log => `
+                <div class="log-item ${log.type === 'card' ? 'card-log' : (log.type === 'vote' ? 'vote-log' : '')}">
+                    <span style="color: #9ca3af; font-size: 0.75rem;">[${log.time}]</span>
+                    <strong>${log.author}:</strong> ${log.text}
+                </div>
+            `).join('');
+        }
+
+        // --- Render Parent Comments & Claps ---
+        function renderParentComments() {
+            const ticker = document.getElementById('parent-ticker-text');
+            if (parentComments.length > 0) {
+                const latest = parentComments[parentComments.length - 1];
+                ticker.innerText = `"${latest.text}" - ${latest.author}`;
+            }
+        }
+
+        function renderClapCount() {
+            document.getElementById('clap-counter').innerText = clapCount;
+        }
+
+        // --- Update Dynamic Control Box by Role ---
+        function updateRoleControlUI() {
+            const box = document.getElementById('role-control-box');
+
+            if (userRole === 'teacher') {
+                box.innerHTML = `
+                    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;">
+                        <div>
+                            <strong style="color: var(--accent-gold);">🖥️ 교사(심판) 제어반:</strong>
+                            <span style="font-size: 0.85rem; color: #9ca3af; margin-left: 8px;">칭찬/제재 카드로 토론을 중계하세요.</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-warning" style="font-size: 0.8rem;" onclick="giveRefereeCard('🟢 Yellow Card (상대방 의견 경청 요망)')">🟨 옐로카드</button>
+                            <button class="btn btn-success" style="font-size: 0.8rem;" onclick="giveRefereeCard('🌟 Fair Play Card (뛰어난 배려와 타협!)')">🟢 칭찬카드</button>
+                            <button class="btn ${votingActive ? 'btn-danger' : 'btn-success'}" style="font-size: 0.8rem;" onclick="toggleVoting()">
+                                ${votingActive ? '🛑 표결 마감하기' : '🗳️ 전자 표결 시작'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else if (userRole === 'student') {
+                const currentProp = proposals.find(p => p.id === currentTurnProposalId);
+                const isMyTurn = currentProp ? true : false;
+
+                box.innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <strong style="color: #60a5fa;">📱 학생 발언 및 패스 모드</strong>
+                            <span style="font-size: 0.85rem; color: #34d399;">현재 공 소유: ${currentProp ? currentProp.teamName : '없음'}</span>
+                        </div>
+                        
+                        ${votingActive ? `
+                            <div style="background-color: #1e3a8a; padding: 10px; border-radius: 6px; text-align: center;">
+                                <div style="font-weight: bold; margin-bottom: 6px;">🗳️ 전자 표결이 진행 중입니다!</div>
+                                <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+                                    ${proposals.map(p => `
+                                        <button class="btn btn-success" style="font-size: 0.8rem;" onclick="castVote('${p.id}')">${p.teamName}에 투표</button>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="student-speech-text" placeholder="우리 모둠의 의견 또는 질문을 입력하세요..." style="flex: 1;">
+                            <select id="pass-target-select" style="width: 130px;">
+                                <option value="">패스 대상 선택</option>
+                                ${proposals.map(p => `<option value="${p.id}">${p.teamName}</option>`).join('')}
+                            </select>
+                            <button class="btn btn-success" onclick="submitSpeechAndPass()">⚽ 발언 & 패스</button>
+                        </div>
+                    </div>
+                `;
+            } else if (userRole === 'parent') {
+                box.innerHTML = `
+                    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;">
+                        <div>
+                            <strong style="color: #f43f5e;">👪 학부모 관중석 모드:</strong>
+                            <span style="font-size: 0.85rem; color: #9ca3af; margin-left: 8px;">멋진 발언에 실시간 응원을 보내주세요!</span>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex: 1; max-width: 500px;">
+                            <input type="text" id="parent-comment-input" placeholder="한 줄 응원/의견을 남겨주세요..." style="flex: 1;">
+                            <button class="btn btn-warning" onclick="submitParentComment()">💬 전송</button>
+                            <button class="btn" style="background-color: #f43f5e;" onclick="sendParentClap()">👏 박수 보내기</button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // --- Avatar Selection Modal Helpers ---
+        function renderAvatarSelector() {
+            const grid = document.getElementById('avatar-selector-grid');
+            grid.innerHTML = AVATARS.map(a => `
+                <div class="avatar-option ${a.id === selectedAvatarId ? 'selected' : ''}" onclick="selectAvatar('${a.id}')">
+                    <div class="icon">${a.emoji}</div>
+                    <div class="name">${a.name}</div>
+                </div>
+            `).join('');
+        }
+
+        function selectAvatar(id) {
+            selectedAvatarId = id;
+            renderAvatarSelector();
+        }
+
+        function openProposalModal() {
+            document.getElementById('proposal-modal').style.display = 'flex';
+        }
+
+        function closeProposalModal() {
+            document.getElementById('proposal-modal').style.display = 'none';
+        }
+
+        // Submit New Proposal (Student)
+        function submitProposal() {
+            const numName = document.getElementById('student-num-name').value.trim();
+            const teamName = document.getElementById('prop-team-name').value.trim();
+            const title = document.getElementById('prop-title').value.trim();
+            const desc = document.getElementById('prop-desc').value.trim();
+
+            if (!teamName || !title) {
+                alert("모둠 이름과 제안 제목을 입력해 주세요!");
+                return;
+            }
+
+            if (numName) {
+                localStorage.setItem('debate_student_info', numName);
+            }
+
+            const newProp = {
+                id: 'prop_' + Date.now(),
+                author: numName || '학생',
+                teamName: teamName,
+                avatarId: selectedAvatarId,
+                title: title,
+                desc: desc || '세부 설명 없음'
+            };
+
+            proposals.push(newProp);
+            if (!currentTurnProposalId) {
+                currentTurnProposalId = newProp.id;
+            }
+
+            matchLogs.push({
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                author: teamName,
+                text: `새로운 급식 안 [${title}]을(를) 제출했습니다.`,
+                type: 'proposal'
+            });
+
+            saveRoomData();
+            closeProposalModal();
+        }
+
+        // Submit Speech and Pass Ball
+        function submitSpeechAndPass() {
+            const textInput = document.getElementById('student-speech-text');
+            const targetSelect = document.getElementById('pass-target-select');
+
+            const text = textInput.value.trim();
+            const targetId = targetSelect.value;
+
+            if (!text) {
+                alert("발언 내용을 입력해 주세요!");
+                return;
+            }
+
+            const currentProp = proposals.find(p => p.id === currentTurnProposalId);
+            const speakerName = currentProp ? currentProp.teamName : '학생';
+
+            matchLogs.push({
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                author: speakerName,
+                text: text,
+                type: 'speech'
+            });
+
+            if (targetId) {
+                currentTurnProposalId = targetId;
+                const targetProp = proposals.find(p => p.id === targetId);
+                matchLogs.push({
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    author: '경기 심판',
+                    text: `⚽ 공이 [${targetProp ? targetProp.teamName : '다음 모둠'}]에게로 패스되었습니다!`,
+                    type: 'pass'
+                });
+            }
+
+            textInput.value = '';
+            saveRoomData();
+        }
+
+        function passBallTo(propId) {
+            currentTurnProposalId = propId;
+            const targetProp = proposals.find(p => p.id === propId);
+            matchLogs.push({
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                author: '교사 심판',
+                text: `⚽ 교사 재량으로 공을 [${targetProp ? targetProp.teamName : '모둠'}]에게 이동시켰습니다.`,
+                type: 'pass'
+            });
+            saveRoomData();
+        }
+
+        function giveRefereeCard(cardText) {
+            matchLogs.push({
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                author: '📣 교사 심판',
+                text: cardText,
+                type: 'card'
+            });
+            saveRoomData();
+        }
+
+        function toggleVoting() {
+            votingActive = !votingActive;
+            if (votingActive) {
+                votingState = {};
+                matchLogs.push({
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    author: '📣 교사 심판',
+                    text: '🗳️ 급식 순서 최종 안 확정을 위한 전자 표결이 시작되었습니다!',
+                    type: 'vote'
+                });
+            } else {
+                matchLogs.push({
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    author: '📣 교사 심판',
+                    text: '🛑 전자 표결이 마감되었습니다. 결과를 확인하세요!',
+                    type: 'vote'
+                });
+            }
+            saveRoomData();
+        }
+
+        function castVote(propId) {
+            const studentInfo = localStorage.getItem('debate_student_info') || ('user_' + Math.random().toString(36).substr(2, 5));
+            votingState[studentInfo] = propId;
+            saveRoomData();
+            alert("투표가 정상적으로 제출되었습니다!");
+        }
+
+        function submitParentComment() {
+            const input = document.getElementById('parent-comment-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            parentComments.push({
+                text: text,
+                author: '시민 참관단',
+                time: Date.now()
+            });
+
+            input.value = '';
+            saveRoomData();
+        }
+
+        function sendParentClap() {
+            clapCount++;
+            saveRoomData();
+        }
+    </script>
+</body>
+</html>
